@@ -14,7 +14,18 @@
     hideAfter = 1000,
     alwaysVisible = false,
     initiallyVisible = false,
+    showThumbOnTrackEnter = false,
     margin = {},
+    width = {
+      track: 10,
+      thumb: 8,
+      thumbActive: 12,
+    },
+    opacity = {
+      track: 1,
+      thumb: 0.5,
+      thumbActive: 0.8,
+    },
     vTrackIn = (node: HTMLElement) => fade(node, { duration: 100 }),
     vTrackOut = (node: HTMLElement) => fade(node, { duration: 300 }),
     vThumbIn = (node: HTMLElement) => fade(node, { duration: 100 }),
@@ -28,7 +39,10 @@
     hideAfter?: number
     alwaysVisible?: boolean
     initiallyVisible?: boolean
+    showThumbOnTrackEnter?: boolean
     margin?: { top?: number; right?: number; bottom?: number; left?: number }
+    width?: { track?: number; thumb?: number; thumbActive?: number }
+    opacity?: { track?: number; thumb?: number; thumbActive?: number }
     vTrackIn?: (node: HTMLElement) => any
     vTrackOut?: (node: HTMLElement) => any
     vThumbIn?: (node: HTMLElement) => any
@@ -46,8 +60,12 @@
   let visible = $state(false)
   let interacted = $state(false)
   let timer = $state(0)
+  let trackHoverTimer = $state(0)
   let startTop = $state(0)
   let startY = $state(0)
+  let trackHovered = $state(false)
+  let thumbHovered = $state(false)
+  let thumbDragging = $state(false)
 
   // ═══════════════════════
   // 3. DERIVED VALUES
@@ -65,7 +83,9 @@
   const thumbTop = $derived(contentsHeight > 0 ? (scrollTop / contentsHeight) * trackHeight : 0)
 
   const scrollable = $derived(contentsHeight > trackHeight)
-  const shouldBeVisible = $derived(scrollable && (alwaysVisible || initiallyVisible))
+  const shouldBeVisible = $derived(
+    scrollable && (alwaysVisible || initiallyVisible || (showThumbOnTrackEnter && trackHovered))
+  )
 
   // ═══════════════════════
   // 4. EFFECTS
@@ -101,8 +121,37 @@
   $effect(() => {
     if (vTrack) {
       untrack(() => {
-        const handleTrackEnter = () => clearTimer()
+        const handleTrackEnter = () => {
+          clearTimer()
+          if (showThumbOnTrackEnter && !trackHovered) {
+            // Clear any existing hover timer
+            if (trackHoverTimer) {
+              window.clearTimeout(trackHoverTimer)
+              trackHoverTimer = 0
+            }
+
+            // Set 300ms delay before showing thumb
+            trackHoverTimer = window.setTimeout(() => {
+              trackHovered = true
+              if (!visible) {
+                visible = true
+                onshow?.()
+              }
+              trackHoverTimer = 0
+            }, 300)
+          }
+        }
+
         const handleTrackLeave = () => {
+          // Cancel the hover timer if mouse leaves before delay
+          if (trackHoverTimer) {
+            window.clearTimeout(trackHoverTimer)
+            trackHoverTimer = 0
+          }
+
+          if (showThumbOnTrackEnter && trackHovered) {
+            trackHovered = false
+          }
           clearTimer()
           setupTimer()
         }
@@ -113,6 +162,7 @@
         return () => {
           vTrack.removeEventListener('mouseenter', handleTrackEnter)
           vTrack.removeEventListener('mouseleave', handleTrackLeave)
+          clearTrackHoverTimer()
         }
       })
     }
@@ -126,6 +176,7 @@
           event.stopPropagation()
           event.preventDefault()
 
+          thumbDragging = true
           startTop = scrollTop
           startY = 'changedTouches' in event ? event.changedTouches[0].clientY : event.clientY
 
@@ -156,6 +207,7 @@
           event.stopPropagation()
           event.preventDefault()
 
+          thumbDragging = false
           startTop = 0
           startY = 0
 
@@ -165,12 +217,24 @@
           document.removeEventListener('touchend', handleThumbUp)
         }
 
+        const handleThumbEnter = () => {
+          thumbHovered = true
+        }
+
+        const handleThumbLeave = () => {
+          thumbHovered = false
+        }
+
         vThumb.addEventListener('mousedown', handleThumbDown, { passive: true })
         vThumb.addEventListener('touchstart', handleThumbDown, { passive: true })
+        vThumb.addEventListener('mouseenter', handleThumbEnter)
+        vThumb.addEventListener('mouseleave', handleThumbLeave)
 
         return () => {
           vThumb.removeEventListener('mousedown', handleThumbDown)
           vThumb.removeEventListener('touchstart', handleThumbDown)
+          vThumb.removeEventListener('mouseenter', handleThumbEnter)
+          vThumb.removeEventListener('mouseleave', handleThumbLeave)
         }
       })
     }
@@ -182,8 +246,15 @@
 
   function setupTimer() {
     timer = window.setTimeout(() => {
-      visible = (scrollable && (alwaysVisible || (initiallyVisible && !interacted))) || false
-      onhide?.()
+      visible =
+        (scrollable &&
+          (alwaysVisible ||
+            (initiallyVisible && !interacted) ||
+            (showThumbOnTrackEnter && trackHovered))) ||
+        false
+      if (!visible) {
+        onhide?.()
+      }
     }, hideAfter)
   }
 
@@ -193,25 +264,43 @@
       timer = 0
     }
   }
+
+  function clearTrackHoverTimer() {
+    if (trackHoverTimer) {
+      window.clearTimeout(trackHoverTimer)
+      trackHoverTimer = 0
+    }
+  }
 </script>
 
-{#if visible}
+{#if visible || showThumbOnTrackEnter}
   <div
     class="v-scrollbar"
-    style="height: {trackHeight}px; margin: {marginTop}px {marginRight}px {marginBottom}px {marginLeft}px">
+    style:width="{width.track}px"
+    style:height="{trackHeight}px"
+    style:margin-top="{marginTop}px"
+    style:margin-right="{marginRight}px"
+    style:margin-bottom="{marginBottom}px"
+    style:margin-left="{marginLeft}px">
     <div
       bind:this={vTrack}
       class="v-track"
-      style="height: {trackHeight}px"
+      style:width="{width.track}px"
+      style:height="{trackHeight}px"
+      style:opacity={opacity.track}
       in:vTrackIn
       out:vTrackOut>
-    </div>
-    <div
-      bind:this={vThumb}
-      class="v-thumb"
-      style="height: {thumbHeight}px; top: {thumbTop}px"
-      in:vThumbIn
-      out:vThumbOut>
+      {#if visible}
+        <div
+          bind:this={vThumb}
+          class="v-thumb"
+          style:top="{thumbTop}px"
+          style:width="{thumbHovered || thumbDragging ? width.thumbActive : width.thumb}px"
+          style:height="{thumbHeight}px"
+          style:opacity={thumbHovered ? opacity.thumbActive : opacity.thumb}
+          in:vThumbIn
+          out:vThumbOut />
+      {/if}
     </div>
   </div>
 {/if}
@@ -221,12 +310,7 @@
     position: absolute;
     top: 0;
     right: 0;
-    width: var(--svrollbar-track-width, 10px);
     pointer-events: none;
-  }
-
-  .v-scrollbar:hover .v-thumb {
-    opacity: 1;
   }
 
   .v-track {
@@ -234,8 +318,6 @@
     top: 0;
     right: 0;
     border-radius: var(--svrollbar-track-radius, initial);
-    width: var(--svrollbar-track-width, 10px);
-    opacity: var(--svrollbar-track-opacity, 1);
     background: var(--svrollbar-track-background, initial);
     box-shadow: var(--svrollbar-track-shadow, initial);
     pointer-events: auto;
@@ -245,11 +327,10 @@
     position: relative;
     margin: 0 auto;
     border-radius: var(--svrollbar-thumb-radius, 0.25rem);
-    width: var(--svrollbar-thumb-width, 6px);
-    opacity: var(--svrollbar-thumb-opacity, 0.5);
     background: var(--svrollbar-thumb-background, gray);
     box-shadow: var(--svrollbar-thumb-shadow, initial);
     pointer-events: auto;
     cursor: pointer;
+    transition: width 0.3s ease-in-out, opacity 0.3s ease-in-out;
   }
 </style>

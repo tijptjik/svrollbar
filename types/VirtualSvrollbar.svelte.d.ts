@@ -41,10 +41,29 @@ export interface VirtualSvrollbarProps {
   initiallyVisible?: boolean;
 
   /**
+   * show thumb when hovering over the track and hide when leaving.
+   * respects all timer configurations.
+   * @default false
+   */
+  showThumbOnTrackEnter?: boolean;
+
+  /**
    * margin (px) from viewport top, right, bottom and left.
    * @default {}
    */
   margin?: { top?: number; right?: number; bottom?: number; left?: number };
+
+  /**
+   * width configuration for track and thumb elements in pixels.
+   * @default { track: 10, thumb: 8, thumbActive: 12 }
+   */
+  width?: { track?: number; thumb?: number; thumbActive?: number };
+
+  /**
+   * opacity configuration for track and thumb elements.
+   * @default { track: 1, thumb: 0.5, thumbActive: 0.8 }
+   */
+  opacity?: { track?: number; thumb?: number; thumbActive?: number };
 
   /**
    * svelte transition to show track in.
